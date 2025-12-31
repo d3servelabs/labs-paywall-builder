@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,6 +47,36 @@ type DeviceSize = 'desktop' | 'tablet' | 'mobile';
 // Get preset names from THEME_PRESETS
 const PRESET_NAMES = Object.keys(THEME_PRESETS) as ThemePresetName[];
 
+// Debounce delay in milliseconds
+const DEBOUNCE_DELAY = 400;
+
+// Custom hook for debounced value
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    // Clear any existing timeout
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+    }
+
+    // Set new timeout
+    timeoutRef.current = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    // Cleanup on unmount or value change
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 export default function PaywallStudio() {
   const [deviceSize, setDeviceSize] = useState<DeviceSize>('desktop');
   const [selectedPreset, setSelectedPreset] = useState<
@@ -67,13 +97,27 @@ export default function PaywallStudio() {
   const [successRedirectUrl, setSuccessRedirectUrl] = useState('');
   const [autoSuccessRedirect, setAutoSuccessRedirect] = useState(true);
 
-  // Get current theme from preset or custom
+  // Debounced values for text inputs (prevents excessive re-renders while typing)
+  const debouncedAppName = useDebouncedValue(appName, DEBOUNCE_DELAY);
+  const debouncedAppLogo = useDebouncedValue(appLogo, DEBOUNCE_DELAY);
+  const debouncedWcAppId = useDebouncedValue(wcAppId, DEBOUNCE_DELAY);
+  const debouncedResourceDescription = useDebouncedValue(
+    resourceDescription,
+    DEBOUNCE_DELAY,
+  );
+  const debouncedPaymentAmount = useDebouncedValue(
+    paymentAmount,
+    DEBOUNCE_DELAY,
+  );
+  const debouncedCustomTheme = useDebouncedValue(customTheme, DEBOUNCE_DELAY);
+
+  // Get current theme from preset or custom (uses debounced custom theme)
   const currentTheme = useMemo<ThemeConfig>(() => {
     if (selectedPreset === 'Custom') {
-      return customTheme;
+      return debouncedCustomTheme;
     }
     return THEME_PRESETS[selectedPreset];
-  }, [selectedPreset, customTheme]);
+  }, [selectedPreset, debouncedCustomTheme]);
 
   const getDeviceWidth = () => {
     switch (deviceSize) {
@@ -97,17 +141,23 @@ export default function PaywallStudio() {
     }
   };
 
-  // Parse amount for display
+  // Parse amount for display (non-debounced for immediate UI feedback)
   const parsedAmount = parseFloat(paymentAmount) || 0.01;
   const amountInAtomicUnits = Math.round(parsedAmount * 1_000_000).toString();
 
-  // Generate preview HTML using x402 package
+  // Parse debounced amount for preview generation
+  const debouncedParsedAmount = parseFloat(debouncedPaymentAmount) || 0.01;
+  const debouncedAmountInAtomicUnits = Math.round(
+    debouncedParsedAmount * 1_000_000,
+  ).toString();
+
+  // Generate preview HTML using x402 package (uses debounced values)
   const previewHtml = useMemo(() => {
     const config: GenericPaywallConfig = {
       // Payment details
       payTo: '0x0000000000000000000000000000000000000000',
-      amount: parsedAmount,
-      amountInAtomicUnits,
+      amount: debouncedParsedAmount,
+      amountInAtomicUnits: debouncedAmountInAtomicUnits,
 
       // Network details (mock for preview)
       network: 'eip155:8453',
@@ -129,14 +179,14 @@ export default function PaywallStudio() {
       // Customization
       theme: currentTheme,
       branding: {
-        appName,
-        appLogo,
+        appName: debouncedAppName,
+        appLogo: debouncedAppLogo,
       },
 
       // Features
       walletConnectProjectId:
-        enableWalletConnect && wcAppId ? wcAppId : undefined,
-      resourceDescription,
+        enableWalletConnect && debouncedWcAppId ? debouncedWcAppId : undefined,
+      resourceDescription: debouncedResourceDescription,
 
       // Preview mode configuration
       preview: {
@@ -155,14 +205,14 @@ export default function PaywallStudio() {
     return generateGenericPaywallTemplate(config);
   }, [
     currentTheme,
-    appName,
-    appLogo,
+    debouncedAppName,
+    debouncedAppLogo,
     enableWalletConnect,
-    wcAppId,
+    debouncedWcAppId,
     showBalances,
-    resourceDescription,
-    parsedAmount,
-    amountInAtomicUnits,
+    debouncedResourceDescription,
+    debouncedParsedAmount,
+    debouncedAmountInAtomicUnits,
   ]);
 
   // Build export config with user's settings
