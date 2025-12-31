@@ -1,8 +1,31 @@
 {
-  "name": "x402",
+  "name": "@namefi/x402-paywall-builder",
   "version": "0.0.0",
+  "description": "Customizable paywall HTML generator for the x402 protocol",
   "type": "module",
-  "private": true,
+  "private": false,
+  "license": "MIT",
+  "author": "D3ServeLabs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d3servelabs/labs-paywall-builder.git",
+    "directory": "packages/x402"
+  },
+  "homepage": "https://x402-paywall.labs.namefi.io",
+  "bugs": {
+    "url": "https://github.com/d3servelabs/labs-paywall-builder/issues"
+  },
+  "keywords": [
+    "x402",
+    "paywall",
+    "crypto",
+    "usdc",
+    "payments",
+    "ethereum",
+    "base",
+    "web3",
+    "namefi"
+  ],
   "main": "./index.ts",
   "types": "./index.ts",
   "exports": {
@@ -13,6 +36,12 @@
     "./shared/scripts": "./shared/scripts.ts",
     "./shared/styles": "./shared/styles.ts"
   },
+  "files": [
+    "*.ts",
+    "generic/**/*.ts",
+    "shared/**/*.ts",
+    "README.md"
+  ],
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "globals": "^16.5.0",

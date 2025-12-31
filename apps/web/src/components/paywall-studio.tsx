@@ -40,7 +40,7 @@ import {
   type ThemeConfig,
   type GenericPaywallConfig,
   type ThemePresetName,
-} from 'x402';
+} from '@namefi/x402-paywall-builder';
 
 type DeviceSize = 'desktop' | 'tablet' | 'mobile';
 
