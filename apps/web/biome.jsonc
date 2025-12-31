@@ -1,0 +1,31 @@
+{
+  "extends": "//",
+  "linter": {
+    "domains": {
+      "next": "recommended"
+    },
+    "rules": {
+      "correctness": {
+        "noNodejsModules": "info",
+        "useUniqueElementIds": "off"
+      },
+      "suspicious": {
+        "noReactSpecificProps": "off",
+        "noArrayIndexKey": "info",
+        "noUnknownAtRules": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/app/**/page.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDefaultExport": { "level": "off" }
+          }
+        }
+      }
+    }
+  ]
+}
