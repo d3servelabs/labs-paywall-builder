@@ -96,6 +96,23 @@ export interface RedirectOptions {
 }
 
 /**
+ * Preview mode configuration for studio/demo
+ */
+export interface PreviewConfig {
+  /** Enable preview mode (disables real wallet connections) */
+  isPreview: boolean;
+  /** Mock wallet address to display */
+  mockAddress?: string;
+  /** Mock balances to display */
+  mockBalances?: Array<{
+    chainName: string;
+    balance: string;
+  }>;
+  /** Show preview state navigation controls */
+  showPreviewControls?: boolean;
+}
+
+/**
  * Generic resource paywall configuration
  */
 export interface GenericPaywallConfig extends BasePaywallConfig {
@@ -107,6 +124,8 @@ export interface GenericPaywallConfig extends BasePaywallConfig {
   successRedirectBtnLabel?: string;
   /** Chain configurations for balance checking */
   chainConfigs?: Record<string, ChainConfig>;
+  /** Preview mode configuration for studio/demo */
+  preview?: PreviewConfig;
 }
 
 /**

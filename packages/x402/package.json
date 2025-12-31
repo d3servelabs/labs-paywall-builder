@@ -1,9 +1,12 @@
 {
-  "name": "@repo/paywall",
+  "name": "x402",
   "version": "0.0.0",
   "type": "module",
   "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
   "exports": {
+    ".": "./index.ts",
     "./generic": "./generic/generic-paywall.ts",
     "./shared": "./shared/types.ts",
     "./shared/constants": "./shared/constants.ts",

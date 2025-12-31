@@ -69,6 +69,7 @@ export function generateGenericPaywallTemplate(
     configJson: JSON.stringify(configWithRedirect),
     amount: config.amount,
     formattedAmount,
+    preview: config.preview,
 
     headerHtml: `
       <h1 class="text-xl font-bold text-foreground mb-2">Payment Required</h1>

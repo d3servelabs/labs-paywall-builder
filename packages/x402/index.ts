@@ -29,6 +29,7 @@ export type {
   PaywallHandlerConfig,
   PaywallNetworkHandler,
   ChainConfig,
+  PreviewConfig,
 } from './shared/types';
 
 // Shared constants
@@ -41,12 +42,15 @@ export {
   DEFAULT_AUTO_SUCCESS_REDIRECT,
   PAYWALL_REDIRECT_OPTIONS_HEADER,
   X402_PROTOCOL_URL,
+  THEME_PRESETS,
+  COINBASE_BRANDING,
 } from './shared/constants';
+
+// Export theme preset name type
+export type { ThemePresetName } from './shared/constants';
 
 // HTML builder utilities
 export { buildPaywallHtml, escapeHtml } from './shared/html-builder';
 
 // Backwards compatibility: re-export DomainPaywallConfig as PaywallTemplateConfig
 export type { DomainPaywallConfig as PaywallTemplateConfig } from './shared/types';
-
-
