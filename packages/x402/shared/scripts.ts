@@ -323,10 +323,30 @@ export function getWalletStateScript(): string {
     }
 
     function disconnect() {
+      // Disconnect WalletConnect if connected
       if (walletConnectProvider) {
-        try { walletConnectProvider.disconnect(); } catch (e) {}
+        try { 
+          walletConnectProvider.disconnect(); 
+        } catch (e) {
+          console.warn('[x402-paywall] Error disconnecting WalletConnect:', e);
+        }
         walletConnectProvider = null;
       }
+      
+      // Reset provider reference
+      provider = null;
+      
+      // Reset WalletConnect button text if present
+      const wcBtn = document.getElementById('btn-walletconnect');
+      if (wcBtn) {
+        wcBtn.innerHTML = \`
+          <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6.09 10.26c3.26-3.19 8.54-3.19 11.8 0l.39.38c.16.16.16.42 0 .58l-1.34 1.31c-.08.08-.21.08-.29 0l-.54-.53c-2.27-2.22-5.96-2.22-8.24 0l-.58.56c-.08.08-.21.08-.29 0L5.66 11.2c-.16-.16-.16-.42 0-.58l.43-.36zm14.58 2.71l1.19 1.17c.16.16.16.42 0 .58l-5.37 5.26c-.16.16-.42.16-.58 0l-3.81-3.73c-.04-.04-.11-.04-.15 0l-3.81 3.73c-.16.16-.42.16-.58 0L2.19 14.72c-.16-.16-.16-.42 0-.58l1.19-1.17c.16-.16.42-.16.58 0l3.81 3.73c.04.04.11.04.15 0l3.81-3.73c.16-.16.42-.16.58 0l3.81 3.73c.04.04.11.04.15 0l3.81-3.73c.16-.16.42-.16.58 0z"/>
+          </svg>
+          WalletConnect
+        \`;
+      }
+      
       resetState();
     }
 
@@ -429,30 +449,184 @@ export function getConnectMetaMaskScript(): string {
 }
 
 /**
- * WalletConnect connection placeholder
+ * WalletConnect connection using @walletconnect/ethereum-provider v2
  */
 export function getConnectWalletConnectScript(hasProjectId: boolean): string {
   if (hasProjectId) {
     return `
+    // WalletConnect provider instance (global for reuse)
+    let walletConnectProviderInstance = null;
+    let walletConnectLoaded = !!window.WalletConnectEthereumProvider;
+    
+    // Listen for WalletConnect to load
+    window.addEventListener('walletconnect-loaded', () => {
+      walletConnectLoaded = true;
+      log('WalletConnect EthereumProvider loaded successfully');
+    });
+
     // Connect via WalletConnect
     async function connectWalletConnect() {
       try {
-        // WalletConnect Modal is loaded via UMD
-        if (!window.WalletConnectModal) {
-          showError('WalletConnect not loaded. Please try MetaMask instead.');
+        log('connectWalletConnect called');
+        
+        // Check if WalletConnect is loaded
+        if (!window.WalletConnectEthereumProvider) {
+          if (!walletConnectLoaded) {
+            showError('WalletConnect is still loading. Please wait a moment and try again.');
+            return;
+          }
+          showError('WalletConnect failed to load. Please try MetaMask instead.');
           return;
         }
 
-        const modal = new window.WalletConnectModal.WalletConnectModal({
-          projectId: window.x402Config.walletConnectProjectId,
-          chains: [window.x402Config.chainId],
+        const config = window.x402Config;
+        log('Initializing WalletConnect with projectId:', config.walletConnectProjectId);
+
+        // Update button text
+        const wcBtn = document.getElementById('btn-walletconnect');
+        if (wcBtn) {
+          wcBtn.querySelector('span') ? wcBtn.querySelector('span').textContent = 'Connecting...' : null;
+        }
+
+        // Initialize WalletConnect EthereumProvider
+        // See: https://docs.walletconnect.com/advanced/providers/ethereum
+        walletConnectProviderInstance = await window.WalletConnectEthereumProvider.init({
+          projectId: config.walletConnectProjectId,
+          chains: [config.chainId],
+          showQrModal: true,
+          // Optional: customize the modal
+          qrModalOptions: {
+            themeMode: 'dark',
+          },
+          optionalMethods: [
+              "eth_signTypedData",
+              "eth_signTypedData_v4",
+              "eth_sign",
+          ],
+          // RPC mapping for the chain
+          rpcMap: {
+            [config.chainId]: config.rpcUrl,
+          },
+          // Metadata for the dApp
+          metadata: {
+            name: config.appName || 'x402 Paywall',
+            description: config.resourceDescription || 'Secure payment via x402 protocol',
+            url: window.location.origin,
+            icons: [config.appLogo || 'https://avatars.githubusercontent.com/u/37784886'],
+          },
         });
 
-        // This is simplified - in production you'd use EthereumProvider
-        showError('WalletConnect integration coming soon. Please use MetaMask.');
+        log('WalletConnect provider initialized, enabling...');
+
+        // Enable the provider (this shows the QR modal)
+        const accounts = await walletConnectProviderInstance.enable();
+        log('WalletConnect enabled, accounts:', accounts);
+
+        if (!accounts || accounts.length === 0) {
+          throw new Error('No accounts returned from WalletConnect');
+        }
+
+        // Store the connected address
+        connectedAddress = accounts[0];
+        
+        // Store the provider globally for signPayment to use
+        walletConnectProvider = walletConnectProviderInstance;
+        provider = walletConnectProviderInstance;
+
+        // Check if we're on the correct chain
+        const chainIdHex = await walletConnectProviderInstance.request({ method: 'eth_chainId' });
+        const currentChainId = parseInt(chainIdHex, 16);
+        log('WalletConnect chainId:', currentChainId, 'target:', config.chainId);
+
+        if (currentChainId !== config.chainId) {
+          log('Chain mismatch, attempting to switch...');
+          try {
+            await walletConnectProviderInstance.request({
+              method: 'wallet_switchEthereumChain',
+              params: [{ chainId: config.chainIdHex }],
+            });
+          } catch (switchError) {
+            // Chain not added, try to add it
+            if (switchError.code === 4902) {
+              await walletConnectProviderInstance.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: config.chainIdHex,
+                  chainName: config.chainName,
+                  nativeCurrency: { name: 'ETH', symbol: 'ETH', decimals: 18 },
+                  rpcUrls: [config.rpcUrl],
+                  blockExplorerUrls: [config.blockExplorer],
+                }],
+              });
+            } else {
+              console.warn('Failed to switch chain:', switchError);
+              // Continue anyway, user may have approved on correct chain
+            }
+          }
+        }
+
+        // Update UI
+        document.getElementById('connected-address').textContent = shortenAddress(connectedAddress);
+
+        // Show balance container and fetch balances
+        const balanceContainer = document.getElementById('balance-container');
+        if (balanceContainer) {
+          balanceContainer.classList.remove('hidden');
+          updateBalanceDisplay(connectedAddress);
+        }
+
+        showState('connected');
+        log('WalletConnect connection successful');
+
+        // Subscribe to account changes
+        walletConnectProviderInstance.on('accountsChanged', (accs) => {
+          log('WalletConnect accountsChanged:', accs);
+          if (accs.length === 0) {
+            disconnect();
+          } else {
+            connectedAddress = accs[0];
+            document.getElementById('connected-address').textContent = shortenAddress(connectedAddress);
+            updateBalanceDisplay(connectedAddress);
+          }
+        });
+
+        // Subscribe to chain changes
+        walletConnectProviderInstance.on('chainChanged', (chainId) => {
+          log('WalletConnect chainChanged:', chainId);
+          // Optionally refresh balances on chain change
+          if (connectedAddress) {
+            updateBalanceDisplay(connectedAddress);
+          }
+        });
+
+        // Subscribe to disconnect
+        walletConnectProviderInstance.on('disconnect', () => {
+          log('WalletConnect disconnected');
+          disconnect();
+        });
+
       } catch (error) {
         console.error('WalletConnect error:', error);
-        showError(error.message || 'Failed to connect via WalletConnect');
+        
+        // Reset button text
+        const wcBtn = document.getElementById('btn-walletconnect');
+        if (wcBtn) {
+          wcBtn.innerHTML = \`
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M6.09 10.26c3.26-3.19 8.54-3.19 11.8 0l.39.38c.16.16.16.42 0 .58l-1.34 1.31c-.08.08-.21.08-.29 0l-.54-.53c-2.27-2.22-5.96-2.22-8.24 0l-.58.56c-.08.08-.21.08-.29 0L5.66 11.2c-.16-.16-.16-.42 0-.58l.43-.36zm14.58 2.71l1.19 1.17c.16.16.16.42 0 .58l-5.37 5.26c-.16.16-.42.16-.58 0l-3.81-3.73c-.04-.04-.11-.04-.15 0l-3.81 3.73c-.16.16-.42.16-.58 0L2.19 14.72c-.16-.16-.16-.42 0-.58l1.19-1.17c.16-.16.42-.16.58 0l3.81 3.73c.04.04.11.04.15 0l3.81-3.73c.16-.16.42-.16.58 0l3.81 3.73c.04.04.11.04.15 0l3.81-3.73c.16-.16.42-.16.58 0z"/>
+            </svg>
+            WalletConnect
+          \`;
+        }
+
+        if (error.message?.includes('User rejected') || error.message?.includes('rejected')) {
+          showError('Connection rejected by user');
+        } else if (error.message?.includes('Modal closed')) {
+          // User just closed the modal, don't show error
+          log('User closed WalletConnect modal');
+        } else {
+          showError(error.message || 'Failed to connect via WalletConnect');
+        }
       }
     }`;
   }
@@ -460,7 +634,7 @@ export function getConnectWalletConnectScript(hasProjectId: boolean): string {
   return `
     // Connect via WalletConnect (not configured)
     async function connectWalletConnect() {
-      showError('WalletConnect not configured');
+      showError('WalletConnect not configured. Please provide a WalletConnect Project ID.');
     }`;
 }
 

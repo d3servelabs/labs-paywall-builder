@@ -7,6 +7,7 @@
 import type { ThemeConfig, BrandingConfig, PreviewConfig } from './types';
 import { NAMEFI_THEME, NAMEFI_BRANDING, X402_PROTOCOL_URL } from './constants';
 import { getViemLoaderScript } from './viem-loader';
+import { getWalletConnectLoaderScript } from './walletconnect-loader';
 import { getTailwindScript, getBaseStyles } from './styles';
 import {
   getDebugLoggingScript,
@@ -355,7 +356,7 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
   <title>${escapeHtml(options.title)}</title>
   ${getTailwindScript(theme)}
   ${isPreview ? '' : getViemLoaderScript()}
-  ${hasWalletConnect && !isPreview ? `<script type="module" src="https://unpkg.com/@walletconnect/modal@2.6.2/dist/index.umd.js"></script>` : ''}
+  ${hasWalletConnect && !isPreview ? getWalletConnectLoaderScript(options.walletConnectProjectId!) : ''}
   ${getBaseStyles(theme)}
 </head>
 <body class="min-h-screen bg-background flex items-center justify-center p-4">
