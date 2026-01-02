@@ -5,7 +5,12 @@
  */
 
 import type { ThemeConfig, BrandingConfig, PreviewConfig } from './types';
-import { NAMEFI_THEME, NAMEFI_BRANDING, X402_PROTOCOL_URL } from './constants';
+import {
+  NAMEFI_THEME,
+  NAMEFI_BRANDING,
+  X402_PROTOCOL_URL,
+  PAYWALL_CONFIG_META_NAME,
+} from './constants';
 import { getViemLoaderScript } from './viem-loader';
 import { getWalletConnectLoaderScript } from './walletconnect-loader';
 import { getTailwindScript, getBaseStyles } from './styles';
@@ -18,6 +23,7 @@ import {
   getConnectWalletConnectScript,
   getSignPaymentScript,
   getDOMContentLoadedScript,
+  getConfigResolutionScript,
 } from './scripts';
 
 /**
@@ -348,11 +354,13 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
   const isPreview = options.preview?.isPreview ?? false;
   const showPreviewControls = options.preview?.showPreviewControls ?? true;
 
+  const configJsonB64 = options.configJson ? btoa(options.configJson) : '';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="${PAYWALL_CONFIG_META_NAME}" content="${configJsonB64}">
   <title>${escapeHtml(options.title)}</title>
   ${getTailwindScript(theme)}
   ${isPreview ? '' : getViemLoaderScript()}
@@ -509,11 +517,17 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
   <!-- Configuration injected from server -->
   <!-- <CONFIG_JSON> -->
   <script>
-    // Configuration injected from server
-    window.x402Config = ${options.configJson};
+    // Fallback configuration injected from server
+    // Can be overridden via x-paywall-config header (base64-encoded JSON in meta tag)
+    // window._x402FallbackConfig = {};
   </script>
   <!-- </CONFIG_JSON> -->
-  <!-- End of configuration injected from server -->
+
+  <!-- Config resolution: reads from meta tag (header) or falls back to window global -->
+  <script>
+    ${getConfigResolutionScript()}
+  </script>
+
   <script>
     ${
       isPreview

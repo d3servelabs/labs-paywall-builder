@@ -916,3 +916,40 @@ export function getDOMContentLoadedScript(): string {
       }
     });`;
 }
+
+/**
+ * Config resolution script
+ *
+ * Reads config from meta tag (set via X-PAYWALL-CONFIG header) or falls back to window global.
+ * This allows the server to override config by:
+ * 1. Setting X-PAYWALL-CONFIG header with base64-encoded JSON
+ * 2. Replacing <meta name="x-paywall-config" content="..."> in the HTML
+ *
+ * Usage in generated HTML:
+ * - Server injects fallback config as window._x402FallbackConfig
+ * - Server optionally populates meta tag with base64-encoded override config
+ * - This script resolves: window.x402Config = getConfigFromHeader() ?? getConfigFromWindowGlobal()
+ */
+export function getConfigResolutionScript(): string {
+  return `
+    (function() {
+      function getConfigFromHeader() {
+        var meta = document.querySelector('meta[name="x-paywall-config"]');
+        if (meta && meta.content) {
+          try {
+            return JSON.parse(atob(meta.content));
+          } catch (e) {
+            console.warn('[x402-paywall] Failed to parse config from meta tag:', e);
+          }
+        }
+        return null;
+      }
+
+      function getConfigFromWindowGlobal() {
+        return window._x402FallbackConfig || null;
+      }
+
+      window.x402Config = getConfigFromHeader() ?? getConfigFromWindowGlobal();
+    })();
+  `;
+}

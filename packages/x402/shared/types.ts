@@ -126,6 +126,7 @@ export interface GenericPaywallConfig extends BasePaywallConfig {
   chainConfigs?: Record<string, ChainConfig>;
   /** Preview mode configuration for studio/demo */
   preview?: PreviewConfig;
+  forExport?: boolean;
 }
 
 /**

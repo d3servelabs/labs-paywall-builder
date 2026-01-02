@@ -68,6 +68,18 @@ export const DEFAULT_AUTO_SUCCESS_REDIRECT = true;
 export const PAYWALL_REDIRECT_OPTIONS_HEADER = 'X-PAYWALL-REDIRECT-OPTIONS';
 
 /**
+ * Header name for config override (base64-encoded JSON)
+ * Server can set this header to override the default config injected in HTML
+ */
+export const PAYWALL_CONFIG_HEADER = 'X-PAYWALL-CONFIG';
+
+/**
+ * Meta tag name for config (used by JavaScript to read header-provided config)
+ * The server populates this meta tag with base64-encoded config from the header
+ */
+export const PAYWALL_CONFIG_META_NAME = 'x-paywall-config';
+
+/**
  * x402 Protocol link
  */
 export const X402_PROTOCOL_URL = 'https://x402.org';

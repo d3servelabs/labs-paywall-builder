@@ -66,7 +66,7 @@ export function generateGenericPaywallTemplate(
     theme,
     branding,
     walletConnectProjectId: config.walletConnectProjectId,
-    configJson: JSON.stringify(configWithRedirect),
+    configJson: config.forExport ? "{{payment-config}}" : JSON.stringify(configWithRedirect),
     amount: config.amount,
     formattedAmount,
     preview: config.preview,

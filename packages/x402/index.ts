@@ -41,6 +41,8 @@ export {
   DEFAULT_REDIRECT_BTN_LABEL,
   DEFAULT_AUTO_SUCCESS_REDIRECT,
   PAYWALL_REDIRECT_OPTIONS_HEADER,
+  PAYWALL_CONFIG_HEADER,
+  PAYWALL_CONFIG_META_NAME,
   X402_PROTOCOL_URL,
   THEME_PRESETS,
   COINBASE_BRANDING,
@@ -51,6 +53,9 @@ export type { ThemePresetName } from './shared/constants';
 
 // HTML builder utilities
 export { buildPaywallHtml, escapeHtml } from './shared/html-builder';
+
+// Script utilities (for advanced use cases)
+export { getConfigResolutionScript } from './shared/scripts';
 
 // Backwards compatibility: re-export DomainPaywallConfig as PaywallTemplateConfig
 export type { DomainPaywallConfig as PaywallTemplateConfig } from './shared/types';
