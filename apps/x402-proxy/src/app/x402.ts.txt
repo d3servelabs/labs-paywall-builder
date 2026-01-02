@@ -1,0 +1,858 @@
+/**
+ * x402 Protocol Router
+ *
+ * Implements HTTP 402 Payment Required flow for domain purchases.
+ * Uses the x402 protocol (https://x402.org) for stablecoin payments.
+ *
+ * Flow:
+ * 1. GET /x402/domain/:domain - Returns 402 with payment requirements
+ * 2. Client sends payment via x402 header
+ * 3. Server verifies payment with facilitator
+ * 4. Server starts domain registration workflow
+ * 5. On completion, server settles payment with facilitator
+ *
+ * Direct Sale Flow:
+ * - If domain is listed for direct sale, uses listing price
+ * - Transfers NFT from seller to buyer
+ * - Transfers USDC from Namefi to seller
+ */
+
+import { Hono, type Context } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { config } from '#lib/env';
+import { createLogger } from '#lib/logger';
+import { validateDomainForInstantPurchase } from '../lib/instant-buy';
+import {
+  db,
+  namefiNftOwnersView,
+  namefiNftOwnersCte,
+  indexedDomainsTable,
+} from '@namefi-astra/db';
+import {
+  x402PurchasesTable,
+  domainUserPreferencesTable,
+  usersTable,
+} from '@namefi-astra/db/schema';
+import { and, eq } from 'drizzle-orm';
+import {
+  checksumWalletAddressSchema,
+  namefiNormalizedDomainSchema,
+  type NamefiNormalizedDomain,
+  type ChecksumWalletAddress,
+} from '@namefi-astra/utils';
+import { z } from 'zod';
+import {
+  paymentMiddleware,
+  x402ResourceServer as X402ResourceServer,
+  type PaymentPayload,
+  type PaymentRequirements,
+} from '@x402/hono';
+import { ExactEvmScheme } from '@x402/evm/exact/server';
+import { HTTPFacilitatorClient, type RouteConfig } from '@x402/core/server';
+import {
+  decodePaymentSignatureHeader,
+  encodePaymentRequiredHeader,
+  type PaymentOption,
+} from '@x402/core/http';
+import { createPaywall } from '@x402/paywall';
+import { namefiEvmPaywall } from '../lib/x402';
+import { temporalClient } from '#temporal/client';
+import { TEMPORAL_QUEUES } from '#temporal/shared/enums';
+import {
+  processX402PurchaseWorkflow,
+  settlementSignal,
+} from '../temporal/workflows/x402/process-x402-purchase.workflow';
+import {
+  processDirectSaleWorkflow,
+  directSaleSettlementSignal,
+} from '../temporal/workflows/x402/process-direct-sale.workflow';
+import { centsToUsdc } from '../temporal/activities/x402.activities';
+import type { SettleResponse } from '@x402/core/types';
+import type { WorkflowHandleWithStartDetails } from '@temporalio/client';
+const logger = createLogger({ context: 'X402_ROUTER' });
+
+/**
+ * Parse chain ID from x402 network string (e.g., "eip155:84532" -> 84532)
+ */
+function parseChainIdFromNetwork(network: string): number {
+  const parts = network.split(':');
+  if (parts.length !== 2 || parts[0] !== 'eip155') {
+    throw new Error(`Invalid network format: ${network}`);
+  }
+  const chainId = Number.parseInt(parts[1], 10);
+  if (Number.isNaN(chainId)) {
+    throw new Error(`Invalid chain ID in network: ${network}`);
+  }
+  return chainId;
+}
+
+// Types for direct sale listing info
+interface DirectSaleListing {
+  isListed: true;
+  priceInUsdCents: number;
+  sellerUserId: string;
+  sellerWalletAddress: ChecksumWalletAddress;
+  chainId: number;
+  expirationDate: Date | null;
+}
+
+interface DirectSaleNotListed {
+  isListed: false;
+  reason?: string;
+}
+
+type DirectSaleCheck = DirectSaleListing | DirectSaleNotListed;
+
+/**
+ * Check if a domain is listed for direct sale.
+ * Returns listing info if listed, or not-listed status otherwise.
+ */
+async function checkDirectSaleListing(
+  normalizedDomainName: NamefiNormalizedDomain,
+): Promise<DirectSaleCheck> {
+  // Get the NFT owner info (includes chain ID)
+  const nftResults = await db
+    .with(namefiNftOwnersCte)
+    .select({
+      ownerAddress: namefiNftOwnersView.ownerAddress,
+      chainId: namefiNftOwnersView.chainId,
+    })
+    .from(namefiNftOwnersView)
+    .where(eq(namefiNftOwnersView.normalizedDomainName, normalizedDomainName))
+    .limit(1);
+
+  const nft = nftResults[0];
+  if (!nft) {
+    return { isListed: false, reason: 'Domain not minted as NFT' };
+  }
+
+  // Get domain expiration from indexed domains
+  const indexedDomain = await db.query.indexedDomainsTable.findFirst({
+    where: eq(indexedDomainsTable.normalizedDomainName, normalizedDomainName),
+    columns: {
+      expirationTime: true,
+    },
+  });
+
+  // Check if domain is expired
+  if (indexedDomain?.expirationTime) {
+    const now = new Date();
+    if (indexedDomain.expirationTime < now) {
+      return { isListed: false, reason: 'Domain has expired' };
+    }
+  }
+
+  // Find the user for this wallet address and check listing
+  const userWithPreferences = await db
+    .select({
+      userId: usersTable.id,
+      listedForDirectSale: domainUserPreferencesTable.listedForDirectSale,
+      directSalePriceInUsdCents:
+        domainUserPreferencesTable.directSalePriceInUsdCents,
+      directSaleExpiresAt: domainUserPreferencesTable.directSaleExpiresAt,
+    })
+    .from(usersTable)
+    .innerJoin(
+      domainUserPreferencesTable,
+      and(
+        eq(usersTable.id, domainUserPreferencesTable.userId),
+        eq(
+          domainUserPreferencesTable.normalizedDomainName,
+          normalizedDomainName,
+        ),
+      ),
+    )
+    .limit(1);
+
+  const preferences = userWithPreferences[0];
+
+  // Check if listed
+  if (!preferences?.listedForDirectSale) {
+    return { isListed: false };
+  }
+
+  // Check if listing has expired
+  if (preferences.directSaleExpiresAt) {
+    const now = new Date();
+    if (preferences.directSaleExpiresAt < now) {
+      return { isListed: false, reason: 'Listing has expired' };
+    }
+  }
+
+  // Validate price exists
+  if (!preferences.directSalePriceInUsdCents) {
+    return { isListed: false, reason: 'Listing price not set' };
+  }
+
+  // Domain is listed for sale
+  return {
+    isListed: true,
+    priceInUsdCents: preferences.directSalePriceInUsdCents,
+    sellerUserId: preferences.userId,
+    sellerWalletAddress: checksumWalletAddressSchema.parse(nft.ownerAddress),
+    chainId: nft.chainId,
+    expirationDate: indexedDomain?.expirationTime ?? null,
+  };
+}
+
+const paywall = createPaywall()
+  .withNetwork(namefiEvmPaywall)
+  .withConfig({
+    appName: 'Namefi',
+    testnet: config.X402_NETWORK === 'eip155:84532',
+  })
+  .build();
+
+const facilitatorClient = new HTTPFacilitatorClient({
+  url: config.X402_FACILITATOR_URL,
+});
+
+const x402ResourceServer = new X402ResourceServer(facilitatorClient).register(
+  config.X402_NETWORK,
+  new ExactEvmScheme(),
+);
+x402ResourceServer.initialize();
+logger.info(
+  x402ResourceServer.hasRegisteredScheme(config.X402_NETWORK, 'exact'),
+  'hasRegisteredScheme',
+);
+logger.info(
+  x402ResourceServer.getSupportedKind(2, config.X402_NETWORK, 'exact'),
+  'getSupportedKind',
+);
+// Type alias for the context
+type X402Context = Context;
+
+// x402 headers
+const PAYMENT_REQUIRED_HEADERS = ['PAYMENT', 'X-PAYMENT'];
+const PAYMENT_SIGNATURE_HEADERS = ['PAYMENT-SIGNATURE', 'X-PAYMENT-SIGNATURE'];
+const PAYMENT_RESPONSE_HEADERS = ['PAYMENT-RESPONSE', 'X-PAYMENT-RESPONSE'];
+
+// Schema for domain path parameter
+const domainParamSchema = z.object({
+  domain: namefiNormalizedDomainSchema,
+});
+
+// Schema for optional query parameters
+const domainQuerySchema = z.object({
+  years: z.coerce.number().int().min(1).max(10).default(1),
+});
+
+export const x402Router = new Hono();
+
+/**
+ * Middleware to check if x402 is enabled
+ */
+x402Router.use('/*', async (c, next) => {
+  if (!config.X402_ENABLED) {
+    throw new HTTPException(503, {
+      message: 'x402 payment protocol is not allowed',
+    });
+  }
+
+  if (!config.X402_SIGNER_ADDRESS) {
+    logger.error('X402_SIGNER_ADDRESS not configured');
+    throw new HTTPException(503, {
+      message: 'x402 payment not configured',
+    });
+  }
+
+  return next();
+});
+
+/**
+ * GET /x402/domain/:domain
+ *
+ * Returns domain availability and payment requirements.
+ * If the request includes a valid x402 payment header, processes the purchase.
+ */
+x402Router.get('/domain/:domain', async (c) => {
+  // Parse and validate domain
+  const domainParam = domainParamSchema.safeParse({
+    domain: c.req.param('domain'),
+  });
+  if (!domainParam.success) {
+    throw new HTTPException(400, {
+      message: `Invalid domain format: ${domainParam.error.message}`,
+    });
+  }
+  const normalizedDomainName = domainParam.data.domain;
+
+  // Parse query parameters
+  const queryResult = domainQuerySchema.safeParse({
+    years: c.req.query('years'),
+  });
+  const durationInYears = queryResult.success ? queryResult.data.years : 1;
+
+  logger.info({ normalizedDomainName, durationInYears }, 'x402 domain request');
+
+  // Check for x402 payment header
+  const paymentSignature = getSingleHeaderWithDifferentKeys(
+    c,
+    PAYMENT_SIGNATURE_HEADERS,
+  );
+
+  if (paymentSignature) {
+    logger.info('Payment signature found');
+    // Process payment - this is a paid request
+    return handlePaidRequest(
+      c,
+      normalizedDomainName,
+      durationInYears,
+      paymentSignature,
+    );
+  }
+  logger.info('No payment signature found');
+
+  // No payment header - return 402 with payment requirements
+  return handlePaymentRequired(c, normalizedDomainName, durationInYears);
+});
+
+/**
+ * Returns 402 Payment Required with x402 payment options.
+ * First checks if domain is listed for direct sale, otherwise falls back to registration.
+ */
+async function handlePaymentRequired(
+  c: X402Context,
+  normalizedDomainName: string,
+  durationInYears: number,
+) {
+  // First, check if domain is listed for direct sale
+  const directSaleCheck = await checkDirectSaleListing(
+    normalizedDomainName as NamefiNormalizedDomain,
+  );
+
+  let priceInUsdCents: number;
+  let description: string;
+  let purchaseType: 'registration' | 'directSale';
+  let directSaleInfo: DirectSaleListing | undefined;
+
+  if (directSaleCheck.isListed) {
+    // Domain is listed for direct sale
+    priceInUsdCents = directSaleCheck.priceInUsdCents;
+    description = `Buy ${normalizedDomainName} (Direct Sale)`;
+    purchaseType = 'directSale';
+    directSaleInfo = directSaleCheck;
+
+    logger.info(
+      {
+        normalizedDomainName,
+        priceInUsdCents,
+        seller: directSaleCheck.sellerWalletAddress,
+      },
+      'Domain listed for direct sale',
+    );
+  } else {
+    // Not listed for direct sale, fall back to registration
+    const validation = await validateDomainForInstantPurchase({
+      normalizedDomainName: normalizedDomainName as any,
+      durationInYears,
+      user: undefined,
+    });
+
+    if (!validation.isValid) {
+      throw new HTTPException(400, {
+        message: validation.error || 'Domain not available for purchase',
+      });
+    }
+
+    priceInUsdCents = validation.priceInUsdCents;
+    description = `Register ${normalizedDomainName} for ${durationInYears} year(s)`;
+    purchaseType = 'registration';
+  }
+
+  // Convert cents to dollars for x402 (uses USDC which is 6 decimals)
+  const priceInUsdc = centsToUsdc(priceInUsdCents);
+  const paymentOption = buildExactPaymentOption(priceInUsdc);
+  const resourceInfo = {
+    description,
+    mimeType: '*',
+    resource: `/x402/domain/${normalizedDomainName}`,
+    url: `/x402/domain/${normalizedDomainName}`,
+  };
+  // Build x402 payment requirements
+  const baseRequirements = {
+    accepts: [paymentOption],
+    ...resourceInfo,
+  };
+  const routeConfig = {
+    ...baseRequirements,
+    unpaidResponseBody: () => {
+      return {
+        contentType: 'application/json',
+        body: {
+          ...baseRequirements,
+          // Include metadata for client
+          metadata: {
+            domain: normalizedDomainName,
+            durationInYears:
+              purchaseType === 'registration' ? durationInYears : undefined,
+            priceInUsdCents,
+            purchaseType,
+            directSale: directSaleInfo
+              ? {
+                  sellerWallet: directSaleInfo.sellerWalletAddress,
+                  chainId: directSaleInfo.chainId,
+                  expirationDate: directSaleInfo.expirationDate?.toISOString(),
+                }
+              : undefined,
+          },
+        },
+      };
+    },
+  } satisfies RouteConfig;
+
+  // A promise to get around middleware requiring next()
+  const nextPromise = Promise.withResolvers<Response>();
+
+  return Promise.race([
+    nextPromise.promise,
+    paymentMiddleware(
+      {
+        [`/x402/domain/${normalizedDomainName}`]: routeConfig,
+      },
+      x402ResourceServer,
+      {
+        appName: 'Namefi',
+        testnet: true,
+      },
+      paywall,
+    )(c, async () => {
+      // Set 402 Payment Required response
+      c.status(402);
+      const paymentRequirements =
+        await x402ResourceServer.buildPaymentRequirementsFromOptions(
+          [paymentOption],
+          c,
+        );
+      const paymentRequiredResponse =
+        x402ResourceServer.createPaymentRequiredResponse(
+          paymentRequirements,
+          resourceInfo,
+          'Payment Required',
+        );
+      const paymentRequiredHeader = encodePaymentRequiredHeader(
+        paymentRequiredResponse,
+      );
+      c.header(PAYMENT_REQUIRED_HEADERS[0], paymentRequiredHeader);
+      c.header('Content-Type', 'application/json');
+
+      nextPromise.resolve(
+        c.json({
+          status: 402,
+          message: 'Payment Required',
+          domain: normalizedDomainName,
+          priceInUsdCents,
+          priceInUsdc,
+          purchaseType,
+          ...(purchaseType === 'registration'
+            ? { durationInYears }
+            : {
+                directSale: {
+                  sellerWallet: directSaleInfo!.sellerWalletAddress,
+                  chainId: directSaleInfo!.chainId,
+                  expirationDate: directSaleInfo!.expirationDate?.toISOString(),
+                },
+              }),
+          paymentOptions: [paymentOption],
+        }),
+      );
+    }),
+  ]);
+}
+
+/**
+ * Handles a request with x402 payment signature.
+ * Routes to direct sale workflow if domain is listed, otherwise registration workflow.
+ */
+async function handlePaidRequest(
+  c: X402Context,
+  normalizedDomainName: string,
+  durationInYears: number,
+  paymentSignature: string,
+) {
+  logger.info(
+    { normalizedDomainName, durationInYears },
+    'Processing x402 paid request',
+  );
+
+  // First, check if domain is listed for direct sale
+  const directSaleCheck = await checkDirectSaleListing(
+    normalizedDomainName as NamefiNormalizedDomain,
+  );
+
+  let priceInUsdCents: number;
+  let purchaseType: 'registration' | 'directSale';
+
+  if (directSaleCheck.isListed) {
+    priceInUsdCents = directSaleCheck.priceInUsdCents;
+    purchaseType = 'directSale';
+    logger.info(
+      { normalizedDomainName, priceInUsdCents, purchaseType },
+      'Processing direct sale',
+    );
+  } else {
+    // Validate domain for registration
+    const validation = await validateDomainForInstantPurchase({
+      normalizedDomainName: normalizedDomainName as any,
+      durationInYears,
+      user: undefined,
+    });
+
+    if (!validation.isValid) {
+      throw new HTTPException(400, {
+        message: validation.error || 'Domain not available for purchase',
+      });
+    }
+
+    priceInUsdCents = validation.priceInUsdCents;
+    purchaseType = 'registration';
+  }
+
+  // Convert cents to dollars for x402 (uses USDC which is 6 decimals)
+  const priceInUsdc = centsToUsdc(priceInUsdCents);
+
+  // Parse payment payload
+  let paymentPayload: PaymentPayload;
+  let paymentRequirement: PaymentRequirements;
+  try {
+    paymentPayload = decodePaymentSignatureHeader(paymentSignature);
+    const paymentRequirements =
+      await x402ResourceServer.buildPaymentRequirementsFromOptions(
+        [buildExactPaymentOption(priceInUsdc)],
+        c,
+      );
+    paymentRequirement = paymentRequirements[0];
+    logger.info({ paymentRequirements, paymentPayload }, 'payment');
+    const verifyRes = await x402ResourceServer.verifyPayment(
+      paymentPayload,
+      paymentRequirement,
+    );
+    logger.trace({ verifyRes }, 'Verified payment');
+    if (!verifyRes || !verifyRes.isValid) {
+      throw new HTTPException(400, {
+        message: 'Invalid payment signature format',
+      });
+    }
+  } catch (req) {
+    logger.trace({ error: req }, 'Invalid payment signature format');
+    throw new HTTPException(400, {
+      message: 'Invalid payment signature format',
+    });
+  }
+
+  // Extract buyer wallet from payment payload
+  // The payload structure depends on the x402 scheme (exact/evm uses EIP-3009)
+  const buyerWallet = extractBuyerWallet(paymentPayload);
+  if (!buyerWallet) {
+    throw new HTTPException(400, {
+      message: 'Could not determine buyer wallet from payment',
+    });
+  }
+
+  // Check for existing pending purchase
+  const existingPurchase = await db.query.x402PurchasesTable.findFirst({
+    where: eq(
+      x402PurchasesTable.normalizedDomainName,
+      normalizedDomainName as any,
+    ),
+  });
+
+  if (
+    existingPurchase &&
+    ['PENDING_VERIFICATION', 'VERIFIED', 'PROCESSING', 'SETTLING'].includes(
+      existingPurchase.status,
+    )
+  ) {
+    throw new HTTPException(409, {
+      message: 'A purchase is already in progress for this domain',
+    });
+  }
+
+  const nonce = (paymentPayload?.payload?.authorization as any)?.nonce;
+  if (!nonce) {
+    throw new HTTPException(400, {
+      message: 'Payment nonce is missing',
+    });
+  }
+
+  // Create x402 purchase record
+  const [purchase] = await db
+    .insert(x402PurchasesTable)
+    .values({
+      normalizedDomainName: normalizedDomainName as any,
+      amountInUSDCents: priceInUsdCents,
+      buyerWalletAddress: buyerWallet,
+      network: config.X402_NETWORK,
+      durationInYears: purchaseType === 'registration' ? durationInYears : 0,
+      status: 'PENDING_VERIFICATION',
+      paymentPayload,
+      paymentNonce: nonce,
+    })
+    .returning();
+
+  // The receiver wallet address is the signer address that received the USDC payment
+  const receiverWalletAddress = config.X402_SIGNER_ADDRESS;
+  if (!receiverWalletAddress) {
+    throw new HTTPException(500, {
+      message: 'X402_SIGNER_ADDRESS not configured',
+    });
+  }
+
+  // Start the appropriate workflow based on purchase type
+  let workflow: WorkflowHandleWithStartDetails<
+    typeof processX402PurchaseWorkflow | typeof processDirectSaleWorkflow
+  >;
+  if (purchaseType === 'directSale' && directSaleCheck.isListed) {
+    // Parse payment chain ID from network string (e.g., "eip155:84532" -> 84532)
+    const paymentChainId = parseChainIdFromNetwork(config.X402_NETWORK);
+
+    // Start direct sale workflow
+    workflow = await temporalClient.workflow.start(processDirectSaleWorkflow, {
+      taskQueue: TEMPORAL_QUEUES.MINT, // Use MINT queue for NFT operations
+      workflowId: processDirectSaleWorkflow.generateId({
+        purchaseId: purchase.id,
+      }),
+      args: [
+        {
+          purchaseId: purchase.id,
+          normalizedDomainName: purchase.normalizedDomainName,
+          sellerWalletAddress: directSaleCheck.sellerWalletAddress,
+          buyerWalletAddress: checksumWalletAddressSchema.parse(
+            purchase.buyerWalletAddress,
+          ),
+          amountInUsdCents: purchase.amountInUSDCents,
+          nftChainId: directSaleCheck.chainId,
+          paymentChainId,
+          sellerUserId: directSaleCheck.sellerUserId,
+          // TODO: Add email lookup for notifications
+          sellerEmail: undefined,
+          buyerEmail: undefined,
+        },
+      ],
+    });
+
+    logger.info(
+      { purchaseId: purchase.id, workflowId: workflow.workflowId },
+      'Started direct sale workflow',
+    );
+  } else {
+    // Start registration workflow
+    workflow = await temporalClient.workflow.start(
+      processX402PurchaseWorkflow,
+      {
+        taskQueue: TEMPORAL_QUEUES.DEFAULT,
+        workflowId: `x402-purchase-[${purchase.id}]`,
+        args: [
+          {
+            purchaseId: purchase.id,
+            amountInUsdCents: purchase.amountInUSDCents,
+            paymentPayload: purchase.paymentPayload!,
+            buyerWalletAddress: checksumWalletAddressSchema.parse(
+              purchase.buyerWalletAddress,
+            ),
+            receiverWalletAddress,
+            durationInYears: purchase.durationInYears,
+            network: purchase.network,
+            normalizedDomainName: purchase.normalizedDomainName,
+          },
+        ],
+      },
+    );
+  }
+
+  let settledPayment: SettleResponse;
+  try {
+    settledPayment = await x402ResourceServer.settlePayment(
+      paymentPayload,
+      paymentRequirement,
+    );
+    logger.trace(
+      { settledPayment },
+      `Settled payment for ${normalizedDomainName}`,
+    );
+    if (!settledPayment || !settledPayment.success) {
+      throw new HTTPException(400, {
+        message: settledPayment.errorReason,
+      });
+    }
+
+    // Signal settlement to the appropriate workflow
+    if (purchaseType === 'registration') {
+      await workflow.signal(settlementSignal, {
+        settledAt: new Date().toISOString(),
+        settlementTxHash: settledPayment.transaction,
+      });
+    } else {
+      // Signal direct sale workflow
+      await workflow.signal(directSaleSettlementSignal, {
+        settledAt: new Date().toISOString(),
+        settlementTxHash: settledPayment.transaction,
+      });
+    }
+  } catch (req) {
+    logger.trace({ error: req }, 'Invalid payment signature format');
+    throw new HTTPException(400, {
+      message: 'Invalid payment signature format',
+    });
+  }
+
+  logger.info(
+    { purchaseId: purchase.id, normalizedDomainName, purchaseType },
+    'Created x402 purchase record',
+  );
+
+  c.header(
+    PAYMENT_RESPONSE_HEADERS[0],
+    Buffer.from(JSON.stringify(settledPayment)).toString('base64'),
+  );
+
+  return c.json({
+    status: 'accepted',
+    message:
+      purchaseType === 'directSale'
+        ? 'Payment accepted, processing domain transfer'
+        : 'Payment accepted, processing domain registration',
+    purchaseId: purchase.id,
+    purchaseType,
+    domain: normalizedDomainName,
+    buyerWallet,
+    estimatedCompletionSeconds: purchaseType === 'directSale' ? 30 : 60,
+  });
+}
+
+/**
+ * GET /x402/purchase/:id
+ *
+ * Check status of an x402 purchase.
+ * If the client accepts text/html and doesn't have ?content-type=json,
+ * redirects to the frontend progress page.
+ */
+x402Router.get('/purchase/:id', async (c) => {
+  const purchaseId = c.req.param('id');
+
+  // Check if client wants JSON explicitly via query param
+  const contentTypeQuery = c.req.query('content-type');
+  const wantsJson = contentTypeQuery === 'json';
+
+  // Check Accept header for text/html preference
+  const acceptHeader = c.req.header('Accept') ?? '';
+  const acceptsHtml =
+    acceptHeader.includes('text/html') ||
+    acceptHeader.includes('application/xhtml+xml');
+
+  // Redirect to frontend progress page if client accepts HTML and doesn't explicitly want JSON
+  if (acceptsHtml && !wantsJson) {
+    return c.redirect(
+      `${config.APP_URL.includes('localhost') ? 'http://' : 'https://'}${config.APP_URL}/x402/purchase/${purchaseId}`,
+    );
+  }
+
+  const purchase = await db.query.x402PurchasesTable.findFirst({
+    where: eq(x402PurchasesTable.id, purchaseId),
+  });
+
+  if (!purchase) {
+    throw new HTTPException(404, {
+      message: 'Purchase not found',
+    });
+  }
+
+  return c.json({
+    id: purchase.id,
+    domain: purchase.normalizedDomainName,
+    status: purchase.status,
+    buyerWallet: purchase.buyerWalletAddress,
+    amountInUsdCents: purchase.amountInUSDCents,
+    network: purchase.network,
+    settlementTxHash: purchase.settlementTxHash,
+    orderId: purchase.orderId,
+    errorMessage: purchase.errorMessage,
+    createdAt: purchase.createdAt,
+    updatedAt: purchase.updatedAt,
+  });
+});
+
+/**
+ * Extract buyer wallet address from x402 payment payload
+ * For EVM/EIP-3009, the "from" address is the buyer
+ */
+function extractBuyerWallet(paymentPayload: PaymentPayload): string | null {
+  try {
+    const payload = paymentPayload.payload;
+
+    // EIP-3009 transferWithAuthorization has "from" field
+    if (payload && typeof payload === 'object') {
+      if ('from' in payload && typeof payload.from === 'string') {
+        return payload.from;
+      }
+      // Some implementations nest the data
+      if (
+        'authorization' in payload &&
+        typeof payload.authorization === 'object'
+      ) {
+        const auth = payload.authorization as Record<string, unknown>;
+        if ('from' in auth && typeof auth.from === 'string') {
+          return auth.from;
+        }
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function safeVerifyPayment(
+  paymentPayload: PaymentPayload,
+  paymentRequirements: PaymentRequirements,
+): Promise<void> {
+  try {
+    const verifyRes = await x402ResourceServer.verifyPayment(
+      paymentPayload,
+      paymentRequirements,
+    );
+    logger.trace({ verifyRes }, 'Verified payment');
+  } catch (req) {
+    logger.trace({ error: req }, 'Invalid payment signature format');
+  }
+}
+
+async function safeSettlePayment(
+  paymentPayload: PaymentPayload,
+  paymentRequirements: PaymentRequirements,
+): Promise<void> {
+  try {
+    const settleRes = await x402ResourceServer.settlePayment(
+      paymentPayload,
+      paymentRequirements,
+    );
+    logger.trace({ settleRes }, 'Settled payment');
+  } catch (req) {
+    logger.trace({ error: req }, 'Failed to settle payment');
+  }
+}
+
+function getSingleHeaderWithDifferentKeys(c: Context, headers: string[]) {
+  for (const headerKey of headers) {
+    const val = c.req.header(headerKey);
+    if (val) return val;
+  }
+
+  return null;
+}
+
+function b64JsonStringify(json: any) {
+  return Buffer.from(json, 'utf-8').toString('base64');
+}
+
+function buildExactPaymentOption(priceInUsdc: ReturnType<typeof centsToUsdc>) {
+  return {
+    scheme: 'exact',
+    network: config.X402_NETWORK,
+    price: priceInUsdc,
+    payTo: config.X402_SIGNER_ADDRESS ?? 'namefidao.eth',
+    maxTimeoutSeconds: 3 * 60 * 60,
+  } satisfies PaymentOption;
+}

@@ -1,0 +1,78 @@
+{
+  "name": "@x402/proxy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "next": "16.0.10",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+
+    "better-auth": "^1.2.5",
+
+    "drizzle-orm": "^0.39.3",
+    "@neondatabase/serverless": "^0.10.4",
+
+    "ramda": "^0.30.1",
+
+    "zod": "^3.24.4",
+    "react-hook-form": "^7.54.2",
+    "@hookform/resolvers": "^3.10.0",
+
+    "@radix-ui/react-accordion": "1.2.2",
+    "@radix-ui/react-alert-dialog": "1.1.4",
+    "@radix-ui/react-avatar": "1.1.2",
+    "@radix-ui/react-checkbox": "1.1.3",
+    "@radix-ui/react-collapsible": "1.1.2",
+    "@radix-ui/react-dialog": "1.1.4",
+    "@radix-ui/react-dropdown-menu": "2.1.4",
+    "@radix-ui/react-label": "2.1.1",
+    "@radix-ui/react-popover": "1.1.4",
+    "@radix-ui/react-progress": "1.1.1",
+    "@radix-ui/react-radio-group": "1.2.2",
+    "@radix-ui/react-scroll-area": "1.2.2",
+    "@radix-ui/react-select": "2.1.4",
+    "@radix-ui/react-separator": "1.1.1",
+    "@radix-ui/react-slot": "1.1.1",
+    "@radix-ui/react-switch": "1.1.2",
+    "@radix-ui/react-tabs": "1.1.2",
+    "@radix-ui/react-toast": "1.2.4",
+    "@radix-ui/react-tooltip": "^1.2.8",
+
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1",
+
+    "lucide-react": "^0.454.0",
+    "recharts": "2.15.4",
+    "sonner": "^2.0.7",
+    "next-themes": "^0.4.6",
+
+    "@namefi/x402-paywall-builder": "workspace:*",
+
+    "@x402/core": "^2.1.0",
+    "@x402/evm": "^2.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.9",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/ramda": "^0.30.2",
+    "postcss": "^8.5",
+    "tailwindcss": "^4.1.9",
+    "tw-animate-css": "1.3.3",
+    "typescript": "^5",
+    "drizzle-kit": "^0.30.5",
+    "@repo/typescript-config": "workspace:*"
+  }
+}
