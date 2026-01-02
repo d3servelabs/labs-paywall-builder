@@ -52,7 +52,11 @@ export {
 export type { ThemePresetName } from './shared/constants';
 
 // HTML builder utilities
-export { buildPaywallHtml, escapeHtml } from './shared/html-builder';
+export {
+  buildPaywallHtml,
+  escapeHtml,
+  populateMetaTagPaywallConfig,
+} from './shared/html-builder';
 
 // Script utilities (for advanced use cases)
 export { getConfigResolutionScript } from './shared/scripts';

@@ -66,7 +66,10 @@ export function generateGenericPaywallTemplate(
     theme,
     branding,
     walletConnectProjectId: config.walletConnectProjectId,
-    configJson: config.forExport ? "{{payment-config}}" : JSON.stringify(configWithRedirect),
+    configJsonB64: config.forExport 
+      ? '{{payment-config}}': undefined,
+
+    configJson: config.forExport ? undefined : JSON.stringify(configWithRedirect),
     amount: config.amount,
     formattedAmount,
     preview: config.preview,
@@ -82,13 +85,13 @@ export function generateGenericPaywallTemplate(
       <div class="flex items-center justify-between">
         <span class="text-muted text-sm">Total Amount</span>
         <div class="text-right">
-          <span class="text-2xl font-bold text-foreground">${formattedAmount}</span>
+          <span id="price-display-amount" class="text-2xl font-bold text-foreground">${formattedAmount}</span>
           <span class="text-muted ml-1">USDC</span>
         </div>
       </div>
       <div class="mt-2 flex items-center justify-end gap-2">
-        <div class="w-2 h-2 rounded-full ${config.testnet ? 'bg-yellow-500' : 'bg-brand-primary'}"></div>
-        <span class="text-xs text-muted">${escapeHtml(config.chainName)}${config.testnet ? ' (Testnet)' : ''}</span>
+        <div id="chain-indicator" class="w-2 h-2 rounded-full ${config.testnet ? 'bg-yellow-500' : 'bg-brand-primary'}"></div>
+        <span id="chain-name-display" class="text-xs text-muted">${escapeHtml(config.chainName)}${config.testnet ? ' (Testnet)' : ''}</span>
       </div>
     `,
 

@@ -142,11 +142,11 @@ export default function PaywallStudio() {
   };
 
   // Parse amount for display (non-debounced for immediate UI feedback)
-  const parsedAmount = parseFloat(paymentAmount) || 0.01;
+  const parsedAmount = Number.parseFloat(paymentAmount) || 0.01;
   const amountInAtomicUnits = Math.round(parsedAmount * 1_000_000).toString();
 
   // Parse debounced amount for preview generation
-  const debouncedParsedAmount = parseFloat(debouncedPaymentAmount) || 0.01;
+  const debouncedParsedAmount = Number.parseFloat(debouncedPaymentAmount) || 0.01;
   const debouncedAmountInAtomicUnits = Math.round(
     debouncedParsedAmount * 1_000_000,
   ).toString();
@@ -259,7 +259,7 @@ export default function PaywallStudio() {
   // Export production HTML (without preview mode)
   const handleExportHTML = () => {
     const config = buildExportConfig();
-    const html = generateGenericPaywallTemplate(config);
+    const html = generateGenericPaywallTemplate({...config, forExport: true});
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -275,7 +275,7 @@ export default function PaywallStudio() {
   // Copy HTML to clipboard
   const handleCopyCode = async () => {
     const config = buildExportConfig();
-    const html = generateGenericPaywallTemplate(config);
+    const html = generateGenericPaywallTemplate({...config, forExport: true});
     try {
       await navigator.clipboard.writeText(html);
       toast.success('HTML copied to clipboard');
@@ -675,6 +675,9 @@ export default function PaywallStudio() {
                         comments. Replace this section with your server-side
                         configuration (payTo address, amount, etc.) when
                         integrating.
+                        <br />
+                        Or you can replace the <code className="bg-slate-200 px-1 py-0.5 rounded text-[10px]">{"{{payment-config}}"}</code>
+                         placeholder with your server-side configuration in the {'<meta name="x-paywall-config" content="...">'} tag.
                       </p>
                     </TooltipContent>
                   </Tooltip>

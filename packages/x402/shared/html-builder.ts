@@ -43,7 +43,10 @@ export interface HtmlBuilderOptions {
   walletConnectProjectId?: string;
 
   /** JSON config to inject into page */
-  configJson: string;
+  configJson?: string;
+  /** Base64 encoded JSON config to inject into page, takes precedence over configJson */
+  /** If both configJson and configJsonB64 are provided, configJsonB64 takes precedence */
+  configJsonB64?: string;
 
   /** HTML for the header section */
   headerHtml: string;
@@ -354,7 +357,8 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
   const isPreview = options.preview?.isPreview ?? false;
   const showPreviewControls = options.preview?.showPreviewControls ?? true;
 
-  const configJsonB64 = options.configJson ? btoa(options.configJson) : '';
+  const configJsonB64 = options.configJsonB64? options.configJsonB64 : options.configJson ? btoa(options.configJson) : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -372,9 +376,13 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
     <!-- Main Card with fancy-border and entrance animation -->
     <div class="paywall-card fancy-border bg-card rounded-xl border border-border p-6 shadow-glow-lg">
       <!-- Logo with animation -->
-      <div class="flex justify-center mb-6 slide-up stagger-1">
+      ${
+        branding.appLogo
+          ? `<div class="flex justify-center mb-6 slide-up stagger-1">
         <img src="${escapeHtml(branding.appLogo)}" alt="${escapeHtml(branding.appName)}" class="h-8" />
-      </div>
+      </div>`
+          : ''
+      }
 
       <!-- Header -->
       <div class="text-center mb-6 slide-up stagger-2">
@@ -445,7 +453,7 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
             </svg>
-            Pay ${options.formattedAmount || options.amount.toFixed(2)} USDC
+            Pay <span id="btn-pay-amount">${options.formattedAmount || options.amount.toFixed(2)}</span> USDC
           </button>
           
           <button
@@ -547,4 +555,13 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
   </script>
 </body>
 </html>`;
+}
+
+export function populateMetaTagPaywallConfig(
+  template: string,
+  config: any,
+  matcher: RegExp = new RegExp('{{payment-config}}', 'g'),
+): string {
+  const configJsonB64 = config ? btoa(JSON.stringify(config)) : '';
+  return template.replace(matcher, configJsonB64);
 }

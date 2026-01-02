@@ -217,7 +217,7 @@ export function getBalanceCheckingScript(): string {
 
             balanceHtml += \`
               <div class="flex items-center justify-between text-xs">
-                <span class="text-muted">\${escape(balanceInfo.chainName)}</span>
+                <span class="text-muted">\${(balanceInfo.chainName)}</span>
                 <span class="text-foreground font-medium">\${formattedBalance} USDC</span>
               </div>
             \`;
@@ -929,6 +929,12 @@ export function getDOMContentLoadedScript(): string {
  * - Server injects fallback config as window._x402FallbackConfig
  * - Server optionally populates meta tag with base64-encoded override config
  * - This script resolves: window.x402Config = getConfigFromHeader() ?? getConfigFromWindowGlobal()
+ *
+ * After resolution, updates UI elements if config was loaded from header:
+ * - #price-display-amount: The amount shown in the price display
+ * - #btn-pay-amount: The amount shown in the pay button
+ * - #chain-name-display: The chain name display
+ * - #chain-indicator: The testnet/mainnet indicator dot
  */
 export function getConfigResolutionScript(): string {
   return `
@@ -949,7 +955,64 @@ export function getConfigResolutionScript(): string {
         return window._x402FallbackConfig || null;
       }
 
-      window.x402Config = getConfigFromHeader() ?? getConfigFromWindowGlobal();
+      // Format amount for display, handling sub-cent values
+      function formatAmount(amount) {
+        if (amount >= 0.01) {
+          return amount.toFixed(2);
+        }
+        // For sub-cent amounts, show up to 6 decimals but trim trailing zeros
+        var formatted = amount.toFixed(6);
+        return formatted.replace(/\\.?0+$/, '');
+      }
+
+      // Update UI elements based on resolved config
+      function updateUIFromConfig(config) {
+        if (!config) return;
+
+        var formattedAmount = config.formattedAmount || formatAmount(config.amount || 0);
+
+        // Update price display amount
+        var priceEl = document.getElementById('price-display-amount');
+        if (priceEl) {
+          priceEl.textContent = formattedAmount;
+        }
+
+        // Update pay button amount
+        var btnAmountEl = document.getElementById('btn-pay-amount');
+        if (btnAmountEl) {
+          btnAmountEl.textContent = formattedAmount;
+        }
+
+        // Update chain name display
+        var chainNameEl = document.getElementById('chain-name-display');
+        if (chainNameEl && config.chainName) {
+          chainNameEl.textContent = config.chainName + (config.testnet ? ' (Testnet)' : '');
+        }
+
+        // Update chain indicator (testnet = yellow, mainnet = brand primary)
+        var chainIndicatorEl = document.getElementById('chain-indicator');
+        if (chainIndicatorEl) {
+          chainIndicatorEl.classList.remove('bg-yellow-500', 'bg-brand-primary');
+          chainIndicatorEl.classList.add(config.testnet ? 'bg-yellow-500' : 'bg-brand-primary');
+        }
+      }
+
+      var headerConfig = getConfigFromHeader();
+      var fallbackConfig = getConfigFromWindowGlobal();
+      
+      window.x402Config = headerConfig ?? fallbackConfig;
+
+      // If config came from header, update the UI elements
+      if (headerConfig) {
+        // Update UI after DOM is ready
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', function() {
+            updateUIFromConfig(headerConfig);
+          });
+        } else {
+          updateUIFromConfig(headerConfig);
+        }
+      }
     })();
   `;
 }
