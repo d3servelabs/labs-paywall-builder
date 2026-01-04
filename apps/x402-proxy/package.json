@@ -1,7 +1,7 @@
 {
-  "name": "@x402/proxy",
+  "name": "@d3servelabs/x402-proxy",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "scripts": {
     "dev": "next dev --port 3001",
     "build": "next build",
@@ -57,7 +57,7 @@
     "sonner": "^2.0.7",
     "next-themes": "^0.4.6",
 
-    "@namefi/x402-paywall-builder": "workspace:*",
+    "@d3servelabs/x402-paywall-builder": "workspace:*",
 
     "@x402/core": "^2.1.0",
     "@x402/evm": "^2.1.0"

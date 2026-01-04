@@ -4,7 +4,7 @@ A visual builder for creating customizable x402 protocol paywall pages. Design b
 
 ## Live Demo
 
-**[x402-paywall.labs.namefi.io](https://labs-x402-paywall-builder.vercel.app/)**
+### [x402-paywall demo](https://labs-x402-paywall-builder.vercel.app/)
 
 ## Features
 
@@ -80,7 +80,7 @@ apps/web/
 
 ## Related Packages
 
-This app uses the `@namefi/x402-paywall-builder` package to generate paywall HTML.
+This app uses the `@d3servelabs/x402-paywall-builder` package to generate paywall HTML.
 
 For detailed documentation on:
 - Configuration options

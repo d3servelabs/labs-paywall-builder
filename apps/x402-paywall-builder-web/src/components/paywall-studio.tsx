@@ -40,7 +40,7 @@ import {
   type ThemeConfig,
   type GenericPaywallConfig,
   type ThemePresetName,
-} from '@namefi/x402-paywall-builder';
+} from '@d3servelabs/x402-paywall-builder';
 
 type DeviceSize = 'desktop' | 'tablet' | 'mobile';
 

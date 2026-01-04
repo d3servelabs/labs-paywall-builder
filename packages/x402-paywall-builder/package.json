@@ -1,5 +1,5 @@
 {
-  "name": "@namefi/x402-paywall-builder",
+  "name": "@d3servelabs/x402-paywall-builder",
   "version": "0.0.0",
   "description": "Customizable paywall HTML generator for the x402 protocol",
   "type": "module",
@@ -8,12 +8,12 @@
   "author": "D3ServeLabs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/d3servelabs/labs-paywall-builder.git",
+    "url": "https://github.com/d3servelabs/labs-x402-tools.git",
     "directory": "packages/x402"
   },
-  "homepage": "https://x402-paywall.labs.namefi.io",
+  "homepage": "https://labs-x402-paywall-builder.vercel.app",
   "bugs": {
-    "url": "https://github.com/d3servelabs/labs-paywall-builder/issues"
+    "url": "https://github.com/d3servelabs/labs-x402-tools/issues"
   },
   "keywords": [
     "x402",
@@ -24,7 +24,8 @@
     "ethereum",
     "base",
     "web3",
-    "namefi"
+    "namefi",
+    "d3servelabs"
   ],
   "main": "./index.ts",
   "types": "./index.ts",

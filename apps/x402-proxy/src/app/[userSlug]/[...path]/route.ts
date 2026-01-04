@@ -12,7 +12,7 @@ import {
   type PaymentPayload,
 } from "@/lib/proxy/facilitator";
 import { checkRateLimit, rateLimitExceededResponse, getRateLimitHeaders } from "@/lib/proxy/rate-limiter";
-import { CHAIN_CONFIG, generateGenericPaywallTemplate, THEME_PRESETS, populateMetaTagPaywallConfig } from "@namefi/x402-paywall-builder";
+import { CHAIN_CONFIG, generateGenericPaywallTemplate, THEME_PRESETS, populateMetaTagPaywallConfig } from "@d3servelabs/x402-paywall-builder";
 
 /**
  * Extract payer address from payment payload

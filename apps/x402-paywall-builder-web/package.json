@@ -1,7 +1,7 @@
 {
-  "name": "my-v0-project",
+  "name": "@d3servelabs/x402-paywall-builder-web",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -57,7 +57,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.1",
     "vaul": "^1.1.2",
-    "@namefi/x402-paywall-builder": "workspace:*",
+    "@d3servelabs/x402-paywall-builder": "workspace:*",
     "zod": "3.25.76"
   },
   "devDependencies": {

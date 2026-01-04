@@ -3,16 +3,12 @@
  *
  * Provides customizable paywall implementations for x402 protocol payments.
  *
- * Two variants are available:
- * - namefiEvmPaywall: Domain-specific paywall tailored for Namefi domain registration
- * - genericEvmPaywall: Brand-agnostic paywall for any x402 resource type
- *
  * Both default to Namefi branding but support full theme customization.
  *
  * Also includes JWT access token utilities for re-accessing paid resources.
  */
 
-// Generic paywall (brand-agnostic, defaults to Namefi)
+// Generic paywall (brand-agnostic)
 export { genericEvmPaywall } from './generic/generic-paywall';
 export { generateGenericPaywallTemplate } from './generic/paywall-template';
 

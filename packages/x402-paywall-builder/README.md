@@ -1,6 +1,6 @@
-# @namefi/x402-paywall-builder
+# @d3servelabs/x402-paywall-builder
 
-[![npm version](https://img.shields.io/npm/v/@namefi/x402-paywall-builder.svg)](https://www.npmjs.com/package/@namefi/x402-paywall-builder)
+[![npm version](https://img.shields.io/npm/v/@d3servelabs/x402-paywall-builder.svg)](https://www.npmjs.com/package/@d3servelabs/x402-paywall-builder)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Customizable paywall HTML generator for the [x402 protocol](https://x402.org). Generate beautiful, responsive payment pages for crypto micropayments with USDC.
@@ -11,7 +11,7 @@ Customizable paywall HTML generator for the [x402 protocol](https://x402.org). G
 
 **No code required!** Use our visual builder to customize and export your paywall:
 
-### [x402-paywall.labs.namefi.io](https://x402-paywall.labs.namefi.io)
+### [x402-paywall demo](https://labs-x402-paywall-builder.vercel.app/)
 
 The builder lets you:
 
@@ -28,22 +28,22 @@ The builder lets you:
 
 ```bash
 # npm
-npm install @namefi/x402-paywall-builder
+npm install @d3servelabs/x402-paywall-builder
 
 # yarn
-yarn add @namefi/x402-paywall-builder
+yarn add @d3servelabs/x402-paywall-builder
 
 # pnpm
-pnpm add @namefi/x402-paywall-builder
+pnpm add @d3servelabs/x402-paywall-builder
 
 # bun
-bun add @namefi/x402-paywall-builder
+bun add @d3servelabs/x402-paywall-builder
 ```
 
 ## Quick Start
 
 ```typescript
-import { generateGenericPaywallTemplate, THEME_PRESETS } from '@namefi/x402-paywall-builder';
+import { generateGenericPaywallTemplate, THEME_PRESETS } from '@d3servelabs/x402-paywall-builder';
 
 const html = generateGenericPaywallTemplate({
   // Payment details
@@ -81,7 +81,7 @@ Six built-in theme presets are available:
 
 | Preset | Style | Primary Color |
 |--------|-------|---------------|
-| `Namefi` | Dark | Green |
+| `d3servelabs` | Dark | Green |
 | `Coinbase` | Light | Blue |
 | `Ocean Gradient` | Light gradient | Blue |
 | `Sunset Gradient` | Warm gradient | Orange |
@@ -89,7 +89,7 @@ Six built-in theme presets are available:
 | `Forest Gradient` | Green gradient | Green |
 
 ```typescript
-import { THEME_PRESETS } from '@namefi/x402-paywall-builder';
+import { THEME_PRESETS } from '@d3servelabs/x402-paywall-builder';
 
 // Use a preset
 const theme = THEME_PRESETS.Coinbase;
@@ -102,7 +102,7 @@ const theme = THEME_PRESETS.Midnight;
 Create fully custom themes by providing a `ThemeConfig` object:
 
 ```typescript
-import type { ThemeConfig } from '@namefi/x402-paywall-builder';
+import type { ThemeConfig } from '@d3servelabs/x402-paywall-builder';
 
 const customTheme: ThemeConfig = {
   background: '#0a0a0a',
@@ -122,7 +122,7 @@ const customTheme: ThemeConfig = {
 For server-side integration with x402 middleware, use the `genericEvmPaywall` handler:
 
 ```typescript
-import { genericEvmPaywall } from '@namefi/x402-paywall-builder';
+import { genericEvmPaywall } from '@d3servelabs/x402-paywall-builder';
 
 // The handler implements PaywallNetworkHandler interface
 const handler = genericEvmPaywall;
@@ -161,7 +161,7 @@ Replace `{{payment-config}}` with your base64-encoded JSON config:
 import { 
   populateMetaTagPaywallConfig,
   PAYWALL_CONFIG_PLACEHOLDER  // '{{payment-config}}'
-} from '@namefi/x402-paywall-builder';
+} from '@d3servelabs/x402-paywall-builder';
 
 // Option 1: Use the helper function
 const html = populateMetaTagPaywallConfig(templateHtml, {
@@ -247,7 +247,7 @@ import {
   PAYWALL_CONFIG_META_NAME,    // 'x-paywall-config'
   PAYWALL_CONFIG_PLACEHOLDER,  // '{{payment-config}}'
   PAYWALL_REDIRECT_OPTIONS_HEADER,  // 'X-PAYWALL-REDIRECT-OPTIONS'
-} from '@namefi/x402-paywall-builder';
+} from '@d3servelabs/x402-paywall-builder';
 ```
 
 ## Configuration Reference
@@ -312,8 +312,8 @@ import {
 ### Constants
 
 - `THEME_PRESETS` - Built-in theme presets
-- `NAMEFI_THEME` - Namefi dark theme
-- `NAMEFI_BRANDING` - Namefi branding config
+- `d3servelabs_THEME` - d3servelabs dark theme
+- `d3servelabs_BRANDING` - d3servelabs branding config
 - `COINBASE_BRANDING` - Coinbase branding config
 - `CHAIN_CONFIG` - Supported chain configurations
 - `PAYWALL_CONFIG_HEADER` - Header name for config (`X-PAYWALL-CONFIG`)

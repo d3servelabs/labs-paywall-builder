@@ -576,7 +576,7 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
  *
  * @example
  * ```typescript
- * import { populateMetaTagPaywallConfig } from '@namefi/x402-paywall-builder';
+ * import { populateMetaTagPaywallConfig } from '@d3servelabs/x402-paywall-builder';
  *
  * const html = populateMetaTagPaywallConfig(templateHtml, {
  *   amount: 0.50,
