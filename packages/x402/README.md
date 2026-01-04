@@ -145,34 +145,109 @@ if (handler.supports(paymentRequirement)) {
 
 ## Server-Side Configuration
 
-The exported HTML contains a configuration section wrapped in special comments that your server should replace with dynamic values:
+The paywall supports dynamic configuration via a meta tag with a replaceable placeholder.
+
+### Meta Tag Placeholder
+
+The HTML includes a meta tag with a `{{payment-config}}` placeholder:
+
+```html
+<meta name="x-paywall-config" content="{{payment-config}}">
+```
+
+Replace `{{payment-config}}` with your base64-encoded JSON config:
+
+```typescript
+import { 
+  populateMetaTagPaywallConfig,
+  PAYWALL_CONFIG_PLACEHOLDER  // '{{payment-config}}'
+} from '@namefi/x402-paywall-builder';
+
+// Option 1: Use the helper function
+const html = populateMetaTagPaywallConfig(templateHtml, {
+  amount: 0.50,
+  formattedAmount: '0.50',
+  chainName: 'Base',
+  testnet: false,
+  // ... other config values
+});
+
+// Option 2: Manual replacement
+const configB64 = btoa(JSON.stringify(config));
+const html = templateHtml.replace('{{payment-config}}', configB64);
+```
+
+When config is provided via the meta tag, the JavaScript automatically:
+- Parses the base64-encoded JSON
+- Updates `window.x402Config` with the parsed config
+- Updates UI elements (price display, pay button amount, chain name)
+
+### Fallback Config Block
+
+The HTML also contains a fallback configuration section:
 
 ```html
 <!-- <CONFIG_JSON> -->
 <script>
-  window.x402Config = { ... };
+  window._x402FallbackConfig = { ... };
 </script>
 <!-- </CONFIG_JSON> -->
 ```
 
-### Dynamic Replacement Example
+This fallback is used when the meta tag placeholder is not replaced.
+
+### Config Resolution Order
+
+The JavaScript resolves config in this order:
+1. **Meta tag** (`x-paywall-config`) - if present and valid base64 JSON
+2. **Fallback** (`window._x402FallbackConfig`) - if meta tag contains placeholder or invalid data
+
+### Dynamic UI Updates
+
+When config comes from the meta tag, these UI elements are automatically updated:
+
+| Element ID | Description |
+|------------|-------------|
+| `#price-display-amount` | The amount shown in the price display |
+| `#btn-pay-amount` | The amount shown in the pay button |
+| `#chain-name-display` | The chain name with testnet suffix |
+| `#chain-indicator` | Colored dot (yellow=testnet, green=mainnet) |
+
+### Redirect Options Header
+
+After successful payment, you can control redirect behavior via the `X-PAYWALL-REDIRECT-OPTIONS` response header. This allows dynamic redirect configuration without modifying the HTML.
 
 ```typescript
-function injectConfig(html: string, config: object): string {
-  const configScript = `<script>window.x402Config = ${JSON.stringify(config)};</script>`;
-  return html.replace(
-    /<!-- <CONFIG_JSON> -->[\s\S]*?<!-- <\/CONFIG_JSON> -->/,
-    `<!-- <CONFIG_JSON> -->\n${configScript}\n<!-- </CONFIG_JSON> -->`
-  );
-}
+// Server response header (base64-encoded JSON)
+const redirectOptions = {
+  successRedirectUrl: 'https://example.com/success',
+  successRedirectDelaySeconds: 3,
+  autoSuccessRedirect: true,  // true = auto-redirect, false = show button
+  successRedirectBtnLabel: 'Continue',
+};
 
-// Usage
-const dynamicHtml = injectConfig(templateHtml, {
-  payTo: req.merchantWallet,
-  amount: calculatePrice(req.resource),
-  currentUrl: req.url,
-  // ... other dynamic values
-});
+response.setHeader(
+  'X-PAYWALL-REDIRECT-OPTIONS',
+  btoa(JSON.stringify(redirectOptions))
+);
+```
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `successRedirectUrl` | `string` | - | URL to redirect after payment |
+| `successRedirectDelaySeconds` | `number` | `3` | Countdown before redirect |
+| `autoSuccessRedirect` | `boolean` | `true` | Auto-redirect or show button |
+| `successRedirectBtnLabel` | `string` | `"Redirect Now"` | Button text when not auto-redirecting |
+
+### Constants
+
+```typescript
+import { 
+  PAYWALL_CONFIG_HEADER,       // 'X-PAYWALL-CONFIG'
+  PAYWALL_CONFIG_META_NAME,    // 'x-paywall-config'
+  PAYWALL_CONFIG_PLACEHOLDER,  // '{{payment-config}}'
+  PAYWALL_REDIRECT_OPTIONS_HEADER,  // 'X-PAYWALL-REDIRECT-OPTIONS'
+} from '@namefi/x402-paywall-builder';
 ```
 
 ## Configuration Reference
@@ -231,6 +306,8 @@ const dynamicHtml = injectConfig(templateHtml, {
 - `genericEvmPaywall` - PaywallNetworkHandler for x402 middleware
 - `buildPaywallHtml(options)` - Low-level HTML builder
 - `escapeHtml(str)` - HTML escape utility
+- `populateMetaTagPaywallConfig(html, config)` - Populate meta tag with config
+- `getConfigResolutionScript()` - Config resolution script for advanced use
 
 ### Constants
 
@@ -239,6 +316,10 @@ const dynamicHtml = injectConfig(templateHtml, {
 - `NAMEFI_BRANDING` - Namefi branding config
 - `COINBASE_BRANDING` - Coinbase branding config
 - `CHAIN_CONFIG` - Supported chain configurations
+- `PAYWALL_CONFIG_HEADER` - Header name for config (`X-PAYWALL-CONFIG`)
+- `PAYWALL_CONFIG_META_NAME` - Meta tag name for config (`x-paywall-config`)
+- `PAYWALL_CONFIG_PLACEHOLDER` - Placeholder in meta tag (`{{payment-config}}`)
+- `PAYWALL_REDIRECT_OPTIONS_HEADER` - Header for redirect options (`X-PAYWALL-REDIRECT-OPTIONS`)
 
 ### Types
 
