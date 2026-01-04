@@ -5,7 +5,13 @@ import { db } from "@/lib/db";
 import { endpoints } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
-import { isValidEthAddress } from "@/lib/utils";
+import { isValidEthAddress, validateEndpointUrl } from "@/lib/utils";
+
+// Get URL validation config from environment
+const urlValidationConfig = {
+  allowLocalhost: process.env.NEXT_PUBLIC_ALLOW_LOCALHOST_ENDPOINT === "true",
+  allowOtherSchemes: process.env.NEXT_PUBLIC_ALLOW_OTHER_ENDPOINT_SCHEMES === "true",
+};
 
 // Validation schema
 const createEndpointSchema = z.object({
@@ -79,6 +85,15 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const validated = createEndpointSchema.parse(body);
+
+    // Validate target URL
+    const urlValidation = validateEndpointUrl(validated.targetUrl, urlValidationConfig);
+    if (!urlValidation.valid) {
+      return NextResponse.json(
+        { error: urlValidation.error || "Invalid target URL" },
+        { status: 400 }
+      );
+    }
 
     // Check if slug already exists for this user
     const existing = await db

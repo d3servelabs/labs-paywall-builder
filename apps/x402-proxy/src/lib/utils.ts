@@ -139,3 +139,127 @@ export const RESERVED_SLUGS = [
 export function isReservedSlug(slug: string): boolean {
   return RESERVED_SLUGS.includes(slug.toLowerCase());
 }
+
+/**
+ * URL validation options
+ */
+export interface ValidateEndpointUrlOptions {
+  allowLocalhost?: boolean;
+  allowOtherSchemes?: boolean;
+}
+
+/**
+ * URL validation result
+ */
+export interface ValidateEndpointUrlResult {
+  valid: boolean;
+  error?: string;
+  url?: URL;
+}
+
+/**
+ * Check if a hostname is localhost or an IP address
+ */
+function isLocalhostOrIP(hostname: string): boolean {
+  // Check for localhost
+  if (hostname.includes("localhost")) {
+    return true;
+  }
+
+  // Check for IPv4 addresses (including loopback)
+  const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
+  if (ipv4Regex.test(hostname)) {
+    return true;
+  }
+
+  // Check for IPv6 addresses (including loopback ::1)
+  // IPv6 in URLs is enclosed in brackets, but hostname won't have them
+  if (hostname === "::1" || hostname.startsWith("fe80:") || hostname.includes(":")) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Validate an endpoint target URL
+ * 
+ * By default:
+ * - Only HTTPS scheme is allowed
+ * - Localhost and IP addresses are not allowed
+ * 
+ * These can be overridden with environment variables or options:
+ * - NEXT_PUBLIC_ALLOW_LOCALHOST_ENDPOINT=true
+ * - NEXT_PUBLIC_ALLOW_OTHER_ENDPOINT_SCHEMES=true
+ */
+export function validateEndpointUrl(
+  urlString: string,
+  options?: ValidateEndpointUrlOptions
+): ValidateEndpointUrlResult {
+  // Get options from env vars or passed options
+  const allowLocalhost = options?.allowLocalhost ?? 
+    (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_ALLOW_LOCALHOST_ENDPOINT === "true");
+  const allowOtherSchemes = options?.allowOtherSchemes ?? 
+    (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_ALLOW_OTHER_ENDPOINT_SCHEMES === "true");
+
+  // Try to parse the URL
+  let url: URL;
+  try {
+    url = new URL(urlString);
+  } catch {
+    return {
+      valid: false,
+      error: "Invalid URL format",
+    };
+  }
+
+  // Check scheme
+  if (!allowOtherSchemes && url.protocol !== "https:") {
+    return {
+      valid: false,
+      error: "Only HTTPS URLs are allowed.",
+    };
+  }
+
+  // Check for valid schemes (even when allowing other schemes)
+  const validSchemes = ["https:", "http:"];
+  if (!validSchemes.includes(url.protocol)) {
+    return {
+      valid: false,
+      error: `Invalid URL scheme: ${url.protocol}. Only http:// and https:// are supported.`,
+    };
+  }
+
+  // Check for localhost/IP
+  if (!allowLocalhost && isLocalhostOrIP(url.hostname)) {
+    return {
+      valid: false,
+      error: "Localhost and IP addresses are not allowed.",
+    };
+  }
+
+  // Check for empty hostname
+  if (!url.hostname) {
+    return {
+      valid: false,
+      error: "URL must have a valid hostname",
+    };
+  }
+
+  return {
+    valid: true,
+    url,
+  };
+}
+
+/**
+ * Get URL validation config from environment
+ */
+export function getUrlValidationConfig(): ValidateEndpointUrlOptions {
+  return {
+    allowLocalhost: typeof process !== "undefined" && 
+      process.env?.NEXT_PUBLIC_ALLOW_LOCALHOST_ENDPOINT === "true",
+    allowOtherSchemes: typeof process !== "undefined" && 
+      process.env?.NEXT_PUBLIC_ALLOW_OTHER_ENDPOINT_SCHEMES === "true",
+  };
+}

@@ -21,11 +21,15 @@ import {
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { validateEndpointUrl, getUrlValidationConfig } from "@/lib/utils";
 
 type AuthType = "none" | "bearer" | "api_key_header" | "api_key_query" | "basic_auth" | "custom_headers";
 
 // Check if testnet is forced via environment variable
 const isTestnetForced = process.env.NEXT_PUBLIC_FORCE_TESTNET === "true";
+
+// Get URL validation config
+const urlValidationConfig = getUrlValidationConfig();
 
 export default function NewEndpointPage() {
   const router = useRouter();
@@ -45,9 +49,32 @@ export default function NewEndpointPage() {
   // Paywall branding
   const [appName, setAppName] = useState("");
   const [appLogo, setAppLogo] = useState("");
+  
+  // URL validation error
+  const [targetUrlError, setTargetUrlError] = useState<string | null>(null);
+
+  // Validate target URL when it changes
+  const handleTargetUrlChange = (value: string) => {
+    setTargetUrl(value);
+    if (value) {
+      const result = validateEndpointUrl(value, urlValidationConfig);
+      setTargetUrlError(result.valid ? null : result.error || null);
+    } else {
+      setTargetUrlError(null);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate URL before submitting
+    const urlValidation = validateEndpointUrl(targetUrl, urlValidationConfig);
+    if (!urlValidation.valid) {
+      setTargetUrlError(urlValidation.error || "Invalid URL");
+      toast.error(urlValidation.error || "Invalid target URL");
+      return;
+    }
+    
     setIsLoading(true);
 
     try {
@@ -284,12 +311,20 @@ export default function NewEndpointPage() {
                 type="url"
                 placeholder="https://api.example.com/v1"
                 value={targetUrl}
-                onChange={(e) => setTargetUrl(e.target.value)}
+                onChange={(e) => handleTargetUrlChange(e.target.value)}
                 required
+                className={targetUrlError ? "border-red-500 focus-visible:ring-red-500" : ""}
               />
-              <p className="text-xs text-muted-foreground">
-                The full URL of your API endpoint
-              </p>
+              {targetUrlError ? (
+                <p className="text-xs text-red-500 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" />
+                  {targetUrlError}
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  The full URL of your API endpoint (HTTPS required)
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -376,7 +411,7 @@ export default function NewEndpointPage() {
                       <AlertCircle className="h-4 w-4 text-yellow-500 cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Testnet mode is forced via NEXT_PUBLIC_FORCE_TESTNET environment variable</p>
+                      <p>Testnet mode is forced, this is a test environment.</p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

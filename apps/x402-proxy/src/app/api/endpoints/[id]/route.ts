@@ -5,6 +5,13 @@ import { db } from "@/lib/db";
 import { endpoints } from "@/lib/db/schema";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { validateEndpointUrl } from "@/lib/utils";
+
+// Get URL validation config from environment
+const urlValidationConfig = {
+  allowLocalhost: process.env.NEXT_PUBLIC_ALLOW_LOCALHOST_ENDPOINT === "true",
+  allowOtherSchemes: process.env.NEXT_PUBLIC_ALLOW_OTHER_ENDPOINT_SCHEMES === "true",
+};
 
 // Validation schema for updates
 const updateEndpointSchema = z.object({
@@ -109,6 +116,17 @@ export async function PATCH(
 
     const body = await request.json();
     const validated = updateEndpointSchema.parse(body);
+
+    // Validate target URL if being updated
+    if (validated.targetUrl) {
+      const urlValidation = validateEndpointUrl(validated.targetUrl, urlValidationConfig);
+      if (!urlValidation.valid) {
+        return NextResponse.json(
+          { error: urlValidation.error || "Invalid target URL" },
+          { status: 400 }
+        );
+      }
+    }
 
     // Check if slug is being changed and if it's unique
     if (validated.slug && validated.slug !== existingEndpoint.slug) {
