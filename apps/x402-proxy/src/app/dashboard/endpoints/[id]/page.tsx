@@ -20,7 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, Trash2, ExternalLink, AlertCircle } from "lucide-react";
+import { ArrowLeft, Loader2, Trash2, ExternalLink, AlertCircle, Info } from "lucide-react";
 import { validateEndpointUrl, getUrlValidationConfig } from "@/lib/utils";
 
 type AuthType =
@@ -36,6 +36,9 @@ const isTestnetForced = process.env.NEXT_PUBLIC_FORCE_TESTNET === "true";
 
 // Get URL validation config
 const urlValidationConfig = getUrlValidationConfig();
+
+// Custom HTML helper URL from environment
+const customHtmlHelperUrl = process.env.NEXT_PUBLIC_CUSTOM_HTML_HELPER_URL;
 
 interface Endpoint {
   id: string;
@@ -650,7 +653,34 @@ export default function EditEndpointPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="customHtml">Custom Paywall HTML (optional)</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="customHtml">Custom Paywall HTML (optional)</Label>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p className="text-sm">
+                        Provide your own HTML template for the paywall. Use <code className="bg-muted px-1 rounded">{"{{payment-config}}"}</code> placeholder to inject payment configuration.
+                        {customHtmlHelperUrl && (
+                          <>
+                            {" "}
+                            <a
+                              href={customHtmlHelperUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary underline hover:no-underline"
+                            >
+                              Learn more
+                            </a>
+                          </>
+                        )}
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
               <textarea
                 id="customHtml"
                 className="w-full h-32 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
@@ -658,6 +688,22 @@ export default function EditEndpointPage() {
                 value={customHtml}
                 onChange={(e) => setCustomHtml(e.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                Use <code className="bg-muted px-1 rounded">{"{{payment-config}}"}</code> as a placeholder for the base64-encoded payment configuration.
+                {customHtmlHelperUrl && (
+                  <>
+                    {" "}
+                    <a
+                      href={customHtmlHelperUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary underline hover:no-underline"
+                    >
+                      Learn more
+                    </a>
+                  </>
+                )}
+              </p>
             </div>
           </CardContent>
         </Card>
