@@ -10,6 +10,7 @@ import {
   NAMEFI_BRANDING,
   X402_PROTOCOL_URL,
   PAYWALL_CONFIG_META_NAME,
+  PAYWALL_CONFIG_PLACEHOLDER,
 } from './constants';
 import { getViemLoaderScript } from './viem-loader';
 import { getWalletConnectLoaderScript } from './walletconnect-loader';
@@ -357,7 +358,12 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
   const isPreview = options.preview?.isPreview ?? false;
   const showPreviewControls = options.preview?.showPreviewControls ?? true;
 
-  const configJsonB64 = options.configJsonB64? options.configJsonB64 : options.configJson ? btoa(options.configJson) : '';
+  // Use provided base64 config, or encode the JSON config, or use the placeholder for server replacement
+  const configJsonB64 = options.configJsonB64
+    ? options.configJsonB64
+    : options.configJson
+      ? btoa(options.configJson)
+      : PAYWALL_CONFIG_PLACEHOLDER;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -557,11 +563,33 @@ export function buildPaywallHtml(options: HtmlBuilderOptions): string {
 </html>`;
 }
 
+/**
+ * Populate the meta tag placeholder with base64-encoded config JSON.
+ *
+ * This function replaces the `{{payment-config}}` placeholder in the meta tag
+ * with the provided config. The JavaScript in the paywall will read this config
+ * and use it instead of the fallback.
+ *
+ * @param template - The HTML template string containing `{{payment-config}}` placeholder
+ * @param config - The config object to inject
+ * @returns The HTML with the populated meta tag
+ *
+ * @example
+ * ```typescript
+ * import { populateMetaTagPaywallConfig } from '@namefi/x402-paywall-builder';
+ *
+ * const html = populateMetaTagPaywallConfig(templateHtml, {
+ *   amount: 0.50,
+ *   formattedAmount: '0.50',
+ *   chainName: 'Base',
+ *   testnet: false,
+ * });
+ * ```
+ */
 export function populateMetaTagPaywallConfig(
   template: string,
-  config: any,
-  matcher: RegExp = new RegExp('{{payment-config}}', 'g'),
+  config: unknown,
 ): string {
   const configJsonB64 = config ? btoa(JSON.stringify(config)) : '';
-  return template.replace(matcher, configJsonB64);
+  return template.replace(PAYWALL_CONFIG_PLACEHOLDER, configJsonB64);
 }

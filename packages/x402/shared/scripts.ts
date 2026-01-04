@@ -941,7 +941,7 @@ export function getConfigResolutionScript(): string {
     (function() {
       function getConfigFromHeader() {
         var meta = document.querySelector('meta[name="x-paywall-config"]');
-        if (meta && meta.content) {
+        if (meta && meta.content && meta.content !== '{{payment-config}}') {
           try {
             return JSON.parse(atob(meta.content));
           } catch (e) {

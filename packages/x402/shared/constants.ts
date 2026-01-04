@@ -80,6 +80,12 @@ export const PAYWALL_CONFIG_HEADER = 'X-PAYWALL-CONFIG';
 export const PAYWALL_CONFIG_META_NAME = 'x-paywall-config';
 
 /**
+ * Placeholder for config in the meta tag
+ * Server replaces this with base64-encoded JSON config
+ */
+export const PAYWALL_CONFIG_PLACEHOLDER = '{{payment-config}}';
+
+/**
  * x402 Protocol link
  */
 export const X402_PROTOCOL_URL = 'https://x402.org';
