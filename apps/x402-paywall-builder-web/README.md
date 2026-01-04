@@ -60,7 +60,7 @@ npm run build
 ## Project Structure
 
 ```
-apps/web/
+apps/x402-paywall-builder-web/
 ├── src/
 │   ├── app/           # Next.js App Router pages
 │   ├── components/    # React components
@@ -80,7 +80,7 @@ apps/web/
 
 ## Related Packages
 
-This app uses the `@d3servelabs/x402-paywall-builder` package to generate paywall HTML.
+This app uses the `@namefi/x402-paywall-builder` package to generate paywall HTML.
 
 For detailed documentation on:
 - Configuration options
@@ -88,7 +88,7 @@ For detailed documentation on:
 - Server-side integration
 - API reference
 
-**See: [packages/x402/README.md](../../packages/x402/README.md)**
+**See: [packages/x402-paywall-builder/README.md](../../packages/x402-paywall-builder/README.md)**
 
 ## Deployment
 
