@@ -3,6 +3,9 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "./db";
 import * as schema from "./db/schema";
 
+// Check if email verification is required (defaults to true)
+const requireEmailVerification = process.env.REQUIRE_EMAIL_VERIFICATION !== "false";
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
@@ -21,7 +24,7 @@ export const auth = betterAuth({
 
   emailAndPassword: {
     enabled: true,
-    requireEmailVerification: true,
+    requireEmailVerification,
     sendResetPassword: async ({ user, url }) => {
       // TODO: Implement email sending
       console.log(`Password reset for ${user.email}: ${url}`);
@@ -29,7 +32,7 @@ export const auth = betterAuth({
   },
 
   emailVerification: {
-    sendOnSignUp: true,
+    sendOnSignUp: requireEmailVerification,
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
       // TODO: Implement email sending
